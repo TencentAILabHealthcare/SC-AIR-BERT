@@ -2,14 +2,6 @@ import torch
 from torch.utils.data import DataLoader
 from FCModel import FCModel
 from Dataset import Dataset
-from Dataset_singleSentence import Dataset_singleSentence
-
-import sys
-sys.path.append('./code/bert')
-import model
-from dataset import WordVocab
-
-from model import BERT
 
 import argparse
 from sklearn.metrics import roc_auc_score
@@ -20,42 +12,65 @@ import os
 from os.path import isdir
 from os import system
 
+
 import matplotlib.pyplot as plt
+
+from transformers import GPT2Tokenizer, GPT2Config, GPT2LMHeadModel
 
 parser = argparse.ArgumentParser()
 
-parser.add_argument("-v", "--vocab_path", required=True, type=str, help="built vocab model path with bert-vocab")
 parser.add_argument("-t", "--test_dataset", type=str, default=None, help="test dateset")
-
-parser.add_argument("-s", "--seq_len", type=int, default=80, help="maximum sequence len")
+parser.add_argument("--test_label", type=str, default=None, help="test dateset")
+parser.add_argument("--block_size", type=int, default=80, help="maximum sequence len")
+parser.add_argument("--vocab_file", type=str, default=None, help="gpt model")
+parser.add_argument("--merges_file", type=str, default=None, help="gpt model")
 parser.add_argument("--class_name", type=str, default=None, help="class name")
 parser.add_argument("--load_model", type=str, default=None, help="load model")
 parser.add_argument("-o", "--output_path", required=True, type=str, help="output")
 
+
 args = parser.parse_args()
 
-vocab = WordVocab.load_vocab(args.vocab_path)
+# tokenizer
+# tokenizer = GPT2Tokenizer.from_pretrained("gpt2", vocab_file=args.vocab_file,merges_file=args.merges_file,pad_token="[PAD]")
+tokenizer = GPT2Tokenizer.from_pretrained("./code/classification/sc-air-gpt/gpt2_tokenizer", vocab_file=args.vocab_file,merges_file=args.merges_file,pad_token="[PAD]")
+tokenizer.add_special_tokens({"additional_special_tokens": ["[SEP]"]})
 
-test_dataset = Dataset(args.test_dataset, 
-                            vocab, 
-                            seq_len=args.seq_len,
-                            on_memory=True,
-                            prob = 0.0,
-                            class_name = args.class_name)
+test_dataset = Dataset(tokenizer, 
+                            args.test_dataset, 
+                            args.block_size,
+                            args.test_label,
+                            args.class_name)
+
 test_data_loader = DataLoader(test_dataset, batch_size=64, num_workers=32)
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-bert_model = BERT(len(vocab), hidden=512, n_layers=6, attn_heads = 4,max_len=args.seq_len,embedding_mode='normal')
 
-model = FCModel(in_features=512)
+# load model configuration
+model_config = GPT2Config(
+    vocab_size=tokenizer.vocab_size,
+    n_positions= 77, 
+    n_ctx=77, 
+    n_embd=512, 
+    n_layer=6,
+    n_head=4,
+    bos_token_id=tokenizer.bos_token_id,
+    eos_token_id=tokenizer.eos_token_id,
+    pad_token_id=tokenizer.pad_token_id,
+    output_hidden_states=True,
+)
 
+# load model
+gpt_model = GPT2LMHeadModel(config=model_config)
+
+model = FCModel(in_features=512,block_size=77)
 
 checkpoint = torch.load(args.load_model)
 model.load_state_dict(checkpoint['fc_model'])
-bert_model.load_state_dict(checkpoint['bert_model'])
+gpt_model.load_state_dict(checkpoint['gpt_model'])
 model = model.to(device)
-bert_model.to(device)
+gpt_model.to(device)
 
 def binary_accuracy(predict, label):
     rounded_predict = torch.round(predict) 
@@ -76,20 +91,27 @@ def train(dataset_loader,train):
     total_real.to(device)
 
     for i, data in enumerate(dataset_loader):
-        bert_model.eval()
+        gpt_model.eval()
         model.eval()
         
-        label = data['classification_label']
-        label = label.cuda()
-
-        encoding = data['bert_input']
-        segment_info = data['segment_label']
+        # print(data['ID'])
         ID = data['ID']
-        bert_output = bert_model(encoding.to(device),segment_info.to(device))
- 
-        pooler_output = bert_output[:,0,:]
+        # print(ID)
+        # print(ID)
+        label = data['labels']
+        # label = torch.tensor(label)
+        label = label.cuda()
+        # print(label)
+
+        encoding = data['text']['input_ids']
+        gpt_output = gpt_model(encoding.to(device),output_hidden_states=True).hidden_states[-1]
+        # print(gpt_output)
+        # print(gpt_output.size()) 
+        # [batch_size,77,512]
         
-        predict = model(pooler_output).squeeze()
+        # pooler_output = bert_output[:,0,:]
+        
+        predict = model(gpt_output).squeeze()
         acc = binary_accuracy(predict, label)
 
         epoch_acc += acc * len(label)
