@@ -41,19 +41,20 @@ git clone https://github.com/TencentAILabHealthcare/SC-AIR-BERT.git
 cd ./SC-AIR-BERT
 conda create -n SC_AIR_BERT python=3.6.8
 conda activate SC_AIR_BERT
-pip install numpy==1.18.5 pandas==1.1.5 torch==1.7.0+cu101 torchaudio==0.7.0 torchvision==0.8.1+cu101 scikit-learn==0.23.2
+pip install numpy==1.18.5 pandas==1.1.5 torch==1.7.0+cu101 torchaudio==0.7.0 torchvision==0.8.1+cu101 scikit-learn==0.23.2 transformers
 conda install cuda -c nvidia
 conda deactivate
 ```
 
 ### 2-Runing
+SC-AIR-BERT:
 
 (1) Self-supervised pre-training
 
     python3 ./code/bert/main_mlm.py \
     --train_dataset ./data/pretrain/train.tsv \
     --test_dataset ./data/pretrain/test.tsv \
-    --vocab_path ./data/vocab/vocab_3mer.pkl \
+    --vocab_path ./data/vocab/sc-air-bert/vocab_3mer.pkl \
     --output_path ./result/pretrain \
     --seq_len  79 \
     --num_workers 32 \
@@ -68,15 +69,15 @@ conda deactivate
     --prob 0.1 \
     --process_mode MLM
 
-The pretrained model is given in : `./checkpoint/pretrain_models/ab_3mer_len79`
+The pretrained model is given in : `./checkpoint/sc-air-bert/pretrain_models/ab_3mer_len79`
 
 (2) Supervised fine-tuning for antigen specificity prediction
 
     python3 ./code/classification/train.py \
-    --vocab_path ./data/vocab/vocab_3mer.pkl \
-    --train_dataset ./data/classification/Ebola/train.tsv \
-    --valid_dataset ./data/classification/Ebola/valid.tsv \
-    --test_dataset ./data/classification/Ebola/test.tsv \
+    --vocab_path ./data/vocab/sc-air-bert/vocab_3mer.pkl \
+    --train_dataset ./data/classification/sc-air-bert/Ebola/train.tsv \
+    --valid_dataset ./data/classification/sc-air-bert/Ebola/valid.tsv \
+    --test_dataset ./data/classification/sc-air-bert/Ebola/test.tsv \
     --bert_model ./checkpoint/pretrain_models/ab_3mer_len79 \
     --output_path ./result/finetuning \
     --lr_b 0.0001 \
@@ -89,18 +90,58 @@ The pretrained model is given in : `./checkpoint/pretrain_models/ab_3mer_len79`
     --class_name 1 \
     --chain 2 \
     --batch_size 32 \
-    --seed 27
+    --seed 51
 
-The obtained models are given in : `./checkpoint/finetuning/`
+The obtained models are given in : `./checkpoint/sc-air-bert/finetuning/`
 
 (3) Inference
     
-    python3 ./code/classification/inference.py \
-    --vocab_path ./data/vocab/vocab_3mer.pkl \
-    --test_dataset ./data/classification/10x/ELAGIGILTV/test.tsv \
+    python3 ./code/classification/sc-air-bert/inference.py \
+    --vocab_path ./data/vocab/sc-air-bert/vocab_3mer.pkl \
+    --test_dataset ./data/classification/sc-air-bert/10x/ELAGIGILTV/test.tsv \
     --seq_len 79 \
     --class_name ELAGIGILTV \
-    --load_model ./checkpoint/finetuning/10x/ELAGIGILTV/model.pth \
+    --load_model ./checkpoint/sc-air-bert/finetuning/10x/ELAGIGILTV/model.pth \
+    --output_path ./result/inference/test.tsv
+
+SC-AIR-GPT:
+
+The pretrained model is given in : `./checkpoint/sc-air-gpt/pretrain_models/checkpoint-92250`
+
+(1) Supervised fine-tuning for antigen specificity prediction
+
+    python3 classification.py \
+    -c ./data/classification/sc-air-gpt/10x/ELAGIGILTV/train.tsv \
+    -d ./data/classification/sc-air-gpt/10x/ELAGIGILTV/valid.tsv \
+    -t ./data/classification/sc-air-gpt/10x/ELAGIGILTV/test.tsv \
+    --block_size 77 \
+    --train_label ./data/classification/sc-air-gpt/10x/ELAGIGILTV/train_label.tsv \
+    --valid_label ./data/classification/sc-air-gpt/10x/ELAGIGILTV/valid_label.tsv \
+    --test_label ./data/classification/sc-air-gpt/10x/ELAGIGILTV/test_label.tsv \
+    --class_name ELAGIGILTV \
+    --vocab_file ./data/vocab/sc-air-gpt/gpt_tokenizer-vocab.json \
+    --merges_file ./data/vocab/sc-air-gpt/gpt_tokenizer-merges.txt \
+    --gpt_model ./checkpoint/sc-air-gpt/pretrain_models/checkpoint-92250 \
+    --in_features 512 \
+    -o ./result/classification/10x/ELAGIGILTV \
+    --lr_b 0.0001 \
+    --lr_c 0.001 \
+    --batch_size 32 \
+    --finetune 1 \
+    --seed 51
+
+The obtained models are given in : `./checkpoint/sc-air-gpt/finetuning/`
+
+(2) Inference
+    
+    python3 ./code/classification/sc-air-gpt/inference.py \
+    --test_dataset ./data/classification/sc-air-gpt/10x/ELAGIGILTV/test.tsv \
+    --test_label ./data/classification/sc-air-gpt/10x/ELAGIGILTV/test_label.tsv \
+    --block_size 77 \
+    --vocab_file ./data/vocab/sc-air-gpt/gpt_tokenizer-vocab.json \
+    --merges_file ./data/vocab/sc-air-gpt/gpt_tokenizer-merges.txt \
+    --class_name ELAGIGILTV \
+    --load_model ./checkpoint/sc-air-gpt/finetuning/10x/ELAGIGILTV/model.pth \
     --output_path ./result/inference/test.tsv
 
 # Dataset:
