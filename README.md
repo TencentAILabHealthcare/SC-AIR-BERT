@@ -47,6 +47,11 @@ conda deactivate
 ```
 
 ### 2-Runing
+
+#### Download the model weights and save them in `./checkpoint`
+
+The checkpoints are available on Zenodo at: https://zenodo.org/record/7816425
+
 SC-AIR-BERT:
 
 (1) Self-supervised pre-training

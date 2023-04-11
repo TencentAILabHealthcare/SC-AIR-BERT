@@ -1,0 +1,1 @@
+The checkpoints are available on Zenodo at: https://zenodo.org/record/7816425
